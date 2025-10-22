@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { Box, Typography, useTheme, Avatar, Button } from "@mui/material";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
