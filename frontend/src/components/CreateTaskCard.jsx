@@ -8,6 +8,8 @@ import * as yup from "yup";
 import { setCurrentProject } from "../features/project/projectSlice";
 import { useState } from "react";
 import { API_BASE_URL } from "../config/serviceApiConfig";
+import { Paper, TextField, useTheme, Typography } from "@mui/material"; // <-- Add Typography
+import { useApi } from "../hooks/useApi"; // <-- 1. IMPORT THE HOOK
 const createTaskValidation = yup.object().shape({
   taskName: yup.string().required("This Field is required"),
   taskDesc: yup.string().required("This Field is required"),
@@ -17,43 +19,27 @@ const createTaskInitialValues = {
   taskDesc: "",
 };
 
-const createTask = async (values, token, userId, projectId, type) => {
-  const req = await fetch(`${API_BASE_URL}/task/createTask`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ...values, userId, projectId, type }),
-  });
-  const data = await req.json();
-  return { data, status: req.status };
-};
+=
 export default function CreateTaskCard({ setCreateTaskOpen, type }) {
   const theme = useTheme();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const currentProject = useSelector((state) => state.project.currentProject);
   const token = useSelector((state) => state.auth.token);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+ const { isLoading, error, request } = useApi();
   const handleFormSubmit = async (values) => {
-    setError(null);
-    setIsLoading(true);
-    const { data, status } = await createTask(
-      values,
-      token,
-      user._id,
-      currentProject._id,
-      type
-    );
-    if (status === 200) {
+    try {
+      const data = await request(
+        "/task/createTask", // endpoint
+        "POST",             // method
+        { ...values, userId: user._id, projectId: currentProject._id, type } // body
+      );
       dispatch(setCurrentProject({ project: data.project }));
       setCreateTaskOpen(false);
-    } else {
-      setError(data.message);
+    } catch (err) {
+      // The error state is already set by the hook!
+      console.error("Failed to create task:", err);
     }
-    setIsLoading(false);
   };
   return (
     <Paper
@@ -110,14 +96,15 @@ export default function CreateTaskCard({ setCreateTaskOpen, type }) {
               helperText={touched.taskDesc && errors.taskDesc}
             />
             <Box sx={{ display: "flex", alignItems: "center" }}>
-              <LoadingButton
-                variant="outlined"
-                type="submit"
-                loading={isLoading}
-              >
-                Create
-              </LoadingButton>
-            </Box>
+      <LoadingButton
+        variant="outlined"
+        type="submit"
+        loading={isLoading} // <-- This now uses the hook's 'isLoading'
+      >
+        Create
+      </LoadingButton>
+    </Box>
+    {error && <Typography color="error" variant="caption" sx={{mt: 1}}>{error}</Typography>}
           </form>
         )}
       </Formik>

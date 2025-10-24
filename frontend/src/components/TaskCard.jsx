@@ -11,48 +11,49 @@ import {
 } from "@mui/material";
 import { Box } from "@mui/system";
 import { useState } from "react";
-import { useDispatch } from "react-redux";
-import { API_BASE_URL } from "../config/serviceApiConfig";
-import { useSelector } from "react-redux/es/hooks/useSelector";
+import { useDispatch, useSelector } from "react-redux";
 import { setCurrentProject } from "../features/project/projectSlice";
+import { useApi } from "../hooks/useApi"; // 1. IMPORT THE HOOK
+
 export default function TaskCard({ task, type }) {
   const states = ["todo", "inProgress", "done"].filter((e) => e !== type);
   const currentProject = useSelector((state) => state.project.currentProject);
   const user = useSelector((state) => state.auth.user);
-  const token = useSelector((state) => state.auth.token);
   const theme = useTheme();
   const dispatch = useDispatch();
+  
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
-  const handleClick = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
+
+  const { request: changeTask } = useApi(); // 2. GET THE REQUEST FUNCTION
+
+  const handleClick = (event) => setAnchorEl(event.currentTarget);
+  const handleClose = () => setAnchorEl(null);
 
   const editPermission =
     currentProject.projectTeam.admin._id === user._id ||
     task.assignedTo.includes(user._id);
-  console.log("Admin Edit ", currentProject.projectTeam.admin);
-  console.log(editPermission);
-  const handleClose = () => setAnchorEl(null);
+
   const handleCardChange = async (nextState) => {
-    const req = await fetch(`${API_BASE_URL}/task/changeTask`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        taskId: task._id,
-        projectId: currentProject._id,
-        currentState: type,
-        nextState: nextState,
-      }),
-    });
-    const data = await req.json();
-    if (req.status === 200) {
+    handleClose(); // Close menu immediately for better UX
+    try {
+      // 3. REPLACE THE FETCH CALL
+      const data = await changeTask(
+        "/task/changeTask",
+        "POST",
+        {
+          taskId: task._id,
+          projectId: currentProject._id,
+          currentState: type,
+          nextState: nextState,
+        }
+      );
       dispatch(setCurrentProject({ project: data.project }));
+    } catch (err) {
+      console.error("Failed to change task state:", err);
     }
   };
+
   return (
     <Paper
       elevation={5}
@@ -71,25 +72,13 @@ export default function TaskCard({ task, type }) {
           open={open}
           onClose={handleClose}
           anchorEl={anchorEl}
-          anchorOrigin={{
-            vertical: "bottom",
-            horizontal: "center",
-          }}
-          transformOrigin={{
-            vertical: "top",
-            horizontal: "left",
-          }}
-          sx={{
-            ".MuiMenu-paper": {
-              backgroundColor: theme.palette.Base,
-            },
-          }}
+          // ... (rest of Menu props are the same)
         >
           {states.map((e) => (
             <MenuItem key={e} onClick={() => handleCardChange(e)}>
-              <Typography
-                sx={{ textTransform: "capitalize" }}
-              >{`Move to ${e}`}</Typography>
+              <Typography sx={{ textTransform: "capitalize" }}>
+                {`Move to ${e}`}
+              </Typography>
             </MenuItem>
           ))}
         </Menu>
@@ -98,14 +87,8 @@ export default function TaskCard({ task, type }) {
       <Typography component="div" variant="subtitle1" color="text.secondary">
         {task.taskDesc}
       </Typography>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "end",
-          gap: 1,
-        }}
-      >
-        <Icon color="text.secondary">
+      <Box sx={{ display: "flex", alignItems: "end", gap: 1, mt: 1 }}>
+        <Icon color="text.secondary" sx={{ fontSize: "1rem" }}>
           <CalendarMonthRounded />
         </Icon>
         <Typography variant="caption">
