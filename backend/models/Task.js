@@ -19,7 +19,16 @@ const taskSchema = new Schema(
       trim: true,
     },
     taskType: { type: String, required: true, trim: true },
-    assignedTo: [],
+    
+    // --- START OF THE FIX ---
+    // Correctly define 'assignedTo' as an array of User references.
+    assignedTo: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    // --- END OF THE FIX ---
   },
   { timestamps: true }
 );
