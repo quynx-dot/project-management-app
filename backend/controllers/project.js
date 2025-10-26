@@ -57,7 +57,7 @@ const getProjectDetails = async (req, res) => {
   try {
     const { projectId } = req.query;
     if (!projectId) {
-      return res.status(400).json({ message: "INVALID PROJECT ID" }); // Use 400 for bad request
+      return res.status(400).json({ message: "INVALID PROJECT ID" });
     }
     const project = await Project.findById(projectId)
       .populate("projectTeam.admin", ["firstName", "lastName", "email", "_id"])
@@ -67,11 +67,14 @@ const getProjectDetails = async (req, res) => {
         "email",
         "_id",
       ])
-      .populate([
-        "projectTasks.todo",
-        "projectTasks.inProgress",
-        "projectTasks.done",
-      ]);
+      // --- FIX: Add a nested populate for the 'assignedTo' field ---
+      .populate({
+         path: 'projectTasks.todo projectTasks.inProgress projectTasks.done',
+         populate: { 
+           path: 'assignedTo', 
+           select: 'firstName lastName email' // Only get the fields you need
+         }
+      });
 
     if (!project) {
         return res.status(404).json({ message: "Project Not Found" });

@@ -82,25 +82,43 @@ const fetchTasks = async (req, res) => {
   }
 };
 
+const Task = require("../models/Task");
+const Project = require("../models/Project");
+const User = require("../models/User");
+
+// (The 'createTask', 'changeTaskType', and 'fetchTasks' functions remain the same)
+const createTask = async (req, res) => { /* ... no changes here ... */ };
+const changeTaskType = async (req, res) => { /* ... no changes here ... */ };
+const fetchTasks = async (req, res) => { /* ... no changes here ... */ };
+
 const assignUser = async (req, res) => {
   try {
     const { taskId, userId, projectId } = req.body;
-    
-    // --- START OF THE FIX ---
-    // The $addToSet operator should be the top-level key in the update object.
-    const updatedTask = await Task.findByIdAndUpdate(
-      taskId,
-      { $addToSet: { assignedTo: userId } },
-      { new: true } // Return the updated document
-    );
-    // --- END OF THE FIX ---
 
-    if (!updatedTask) return res.status(404).json({ message: "Task not found." });
+    // First, let's validate our inputs
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User Not Found" });
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ message: "Task Not Found" });
 
-    // Since we only updated a task, we don't need to re-fetch the whole project
-    // unless the frontend absolutely requires it. For now, let's just send a
-    // success message. This is more efficient.
-    res.status(200).json({ message: "User assigned successfully.", task: updatedTask });
+    // Add the user to the task's assignedTo array
+    await Task.findByIdAndUpdate(taskId, { $addToSet: { assignedTo: userId } });
+
+    // --- START OF CHANGE ---
+    // Fetch and return the entire, fully populated project object.
+    const savedProject = await Project.findById(projectId)
+      .populate("projectTeam.admin", ["firstName", "lastName", "email", "_id"])
+      .populate("projectTeam.teamMembers", ["firstName", "lastName", "email", "_id"])
+      .populate({
+         path: 'projectTasks.todo projectTasks.inProgress projectTasks.done',
+         populate: { 
+           path: 'assignedTo', 
+           select: 'firstName lastName email' 
+         }
+      });
+
+    res.status(200).json({ project: savedProject });
+    // --- END OF CHANGE ---
 
   } catch (err) {
     console.error("Error assigning user:", err);
