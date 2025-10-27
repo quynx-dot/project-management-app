@@ -1,55 +1,59 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { API_BASE_URL } from "../config/serviceApiConfig";
 import { Chip, CircularProgress, Menu, MenuItem } from "@mui/material";
 import { KeyboardArrowDownRounded } from "@mui/icons-material";
-import { useState } from "react";
 import { setCurrentProject } from "../features/project/projectSlice";
+import { useApi } from "../hooks/useApi"; // 1. IMPORT THE HOOK
+
 export default function SwitchProject() {
   const user = useSelector((state) => state.auth.user);
-  const token = useSelector((state) => state.auth.token);
   const currentProject = useSelector((state) => state.project.currentProject);
-  const [userProjects, setUserProjects] = useState([]);
-  const [anchorEl, setAnchorEl] = useState();
   const dispatch = useDispatch();
+
+  const [userProjects, setUserProjects] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
-  const handleClick = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-  const fetchProjects = async () => {
-    const req = await fetch(
-      `${API_BASE_URL}/user/getProjects?userId=${user._id}`,
-      { method: "GET", headers: { Authorization: `Bearer ${token}` } }
-    );
-    const data = await req.json();
-    if (req.status === 200) {
-      console.log("data from server  : ", data.projects);
-      setUserProjects(data.projects);
-    }
-  };
+
+  // 2. Create two named instances of the hook for clarity
+  const { isLoading: isListLoading, request: fetchProjectList } = useApi();
+  const { isLoading: isDetailLoading, request: fetchProjectDetails } = useApi();
+
+  const handleClick = (event) => setAnchorEl(event.currentTarget);
+  const handleClose = () => setAnchorEl(null);
+
   const handleChangeProject = async (project) => {
-    const req = await fetch(
-      `${API_BASE_URL}/project/get?projectId=${project._id}`,
-      { method: "GET", headers: { Authorization: `Bearer ${token}` } }
-    );
-    const data = await req.json();
-    dispatch(setCurrentProject({ project: data.project }));
     handleClose();
-  };
-  useEffect(() => {
-    if (userProjects.length === 0) {
-      fetchProjects();
+    try {
+      const data = await fetchProjectDetails(`/project/get?projectId=${project._id}`);
+      dispatch(setCurrentProject({ project: data.project }));
+    } catch (err) {
+      console.error("Failed to fetch project details:", err);
     }
-  }, []);
-  console.log(userProjects);
-  if (!currentProject) return <CircularProgress />;
+  };
+
+  useEffect(() => {
+    const getProjects = async () => {
+      try {
+        const data = await fetchProjectList(`/user/getProjects?userId=${user._id}`);
+        setUserProjects(data.projects);
+      } catch (err) {
+        console.error("Failed to fetch project list:", err);
+      }
+    };
+
+    if (user?._id) {
+      getProjects();
+    }
+  }, [user]); // 3. Correct dependency array
+
+  if (isListLoading || !currentProject) {
+    return <CircularProgress size={24} />;
+  }
+
   return (
     <>
       <Chip
-        label={currentProject.projectName}
+        label={isDetailLoading ? "Loading..." : currentProject.projectName}
         icon={<KeyboardArrowDownRounded />}
         variant="outlined"
         size="small"

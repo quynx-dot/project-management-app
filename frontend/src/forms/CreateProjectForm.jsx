@@ -1,106 +1,73 @@
 /* eslint-disable react/prop-types */
-//form for creating a project
-import { Box, Button, Divider, TextField, Typography } from "@mui/material";
+import { Box, Button, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import TeamMateCard from "../components/TeamMateCard";
-import { API_BASE_URL } from "../config/serviceApiConfig";
-import {
-  ArrowBackRounded,
-  ArrowForwardRounded,
-  SearchRounded,
-} from "@mui/icons-material";
+import { ArrowBackRounded, ArrowForwardRounded } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
 import * as yup from "yup";
 import { Formik } from "formik";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { setCurrentProject } from "../features/project/projectSlice";
 import refreshUser from "../auth/refreshUser";
 import { TopBar } from "../scene/NoProject";
 import InvitePeople from "./InvitePeople";
+import { useApi } from "../hooks/useApi"; // 1. IMPORT THE HOOK
+
+const projectValidationSchema = yup.object().shape({
+  projectName: yup.string().required("A project name is required"),
+  projectDisc: yup.string(),
+});
+
 export default function CreateProjectForm({ setPageType }) {
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
-  const projectValidationSchema = yup.object().shape({
-    projectName: yup
-      .string()
-      .required("How Does A Project Sounds Without A Name"),
-    projectDisc: yup.string(),
-  });
-  const handleCreateProjectRequest = async (values, teamMates) => {
-    const { projectName, projectDisc } = values;
-    const req = await fetch(`${API_BASE_URL}/project/create`, {
-      method: "POST",
-      body: JSON.stringify({
-        projectName,
-        projectDisc,
-        teamMates,
-        userId: user._id,
-      }),
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-    if (req.status === 200) {
-      const savedProject = await req.json();
-      return {
-        status: req.status,
-        data: savedProject,
-      };
-    }
-    const { message } = await req.json();
-    return {
-      data: message,
-      status: req.status,
-    };
-  };
   const navigate = useNavigate();
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [TeamMembers, setTeamMembers] = useState([]);
-  const [errorMsg, setErrorMsg] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const dispatch = useDispatch();
-  const handleInviteEmailChange = (e) => {
-    setInviteEmail(e.target.value);
-    setErrorMsg(null);
-  };
-  const handleRemoveTeamMate = (email) => {
-    setTeamMembers((state) => state.filter((e) => e.email !== email));
-  };
-  const handleAddTeamMate = (user) => {
-    if (TeamMembers.length >= 4) return;
-    if (TeamMembers.filter((e) => e.email === inviteEmail).length != 0) return;
-    setTeamMembers((state) => [...state, user]);
-  };
-  const handleFormSubmit = async (values, teamMates) => {
-    const teamMembers = teamMates.map((e) => e._id);
 
-    const { status, data } = await handleCreateProjectRequest(
-      values,
-      teamMembers,
-    );
-    if (status === 200) {
-      console.log("Project Created SuccessFully");
-      await refreshUser(token, user, dispatch);
-      navigate("/");
-      return;
+  const [TeamMembers, setTeamMembers] = useState([]);
+
+  // 2. Create two instances of the hook for two different API calls.
+  const { isLoading: isCreating, error: createError, request: createProject } = useApi();
+  const { isLoading: isSearching, error: searchError, request: findUser } = useApi();
+  
+  const handleAddTeamMate = (userToAdd) => {
+    if (TeamMembers.length >= 4) return;
+    if (TeamMembers.some((member) => member.email === userToAdd.email)) return;
+    setTeamMembers((state) => [...state, userToAdd]);
+  };
+
+  const findUserByEmail = async (email) => {
+    if (!email) return;
+    try {
+      const data = await findUser(`/user/find?email=${email}`);
+      handleAddTeamMate(data.user);
+    } catch (err) {
+      console.error("Failed to find user:", err);
+      // The searchError state is now automatically set by the hook!
     }
-    console.log(`Error : ${data}`);
   };
-  const fetchUsers = async () => {
-    if (inviteEmail === "") return;
-    setErrorMsg(null);
-    setIsLoading(true);
-    const res = await fetch(`${API_BASE_URL}/user/find?email=${inviteEmail}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const fetchedUser = await res.json();
-    setIsLoading(false);
-    if (res.status === 404) return setErrorMsg(fetchedUser.message);
-    handleAddTeamMate(fetchedUser.user);
+
+  const handleFormSubmit = async (values) => {
+    const teamMates = TeamMembers.map((e) => e._id);
+    try {
+      await createProject(
+        "/project/create",
+        "POST",
+        {
+          projectName: values.projectName,
+          projectDesc: values.projectDisc,
+          teamMates,
+          userId: user._id,
+        }
+      );
+      await refreshUser(token, user, dispatch); // This fetch call is outside a component, so it's okay.
+      navigate("/");
+    } catch (err) {
+      console.error("Failed to create project:", err);
+      // The createError state is now automatically set!
+    }
   };
+
   return (
     <Box
       sx={{
@@ -115,7 +82,7 @@ export default function CreateProjectForm({ setPageType }) {
       <Button
         startIcon={<ArrowBackRounded />}
         variant="outlined"
-        sx={{ position: "absolute", left: 10 }}
+        sx={{ position: "absolute", left: 10, top: 80 }} // Adjusted position
         onClick={() => setPageType(0)}
       >
         Back
@@ -125,12 +92,9 @@ export default function CreateProjectForm({ setPageType }) {
       </Typography>
 
       <Formik
-        initialValues={{
-          projectName: "",
-          projectDisc: "",
-        }}
+        initialValues={{ projectName: "", projectDisc: "" }}
         validationSchema={projectValidationSchema}
-        onSubmit={(values) => handleFormSubmit(values, TeamMembers)}
+        onSubmit={handleFormSubmit}
       >
         {({
           values,
@@ -159,9 +123,7 @@ export default function CreateProjectForm({ setPageType }) {
               name="projectName"
               onChange={handleChange}
               onBlur={handleBlur}
-              error={
-                Boolean(touched.projectName) && Boolean(errors.projectName)
-              }
+              error={Boolean(touched.projectName) && Boolean(errors.projectName)}
               helperText={touched.projectName && errors.projectName}
               value={values.projectName}
             />
@@ -174,18 +136,21 @@ export default function CreateProjectForm({ setPageType }) {
               rows={4}
               onChange={handleChange}
               onBlur={handleBlur}
-              error={
-                Boolean(touched.projectDisc) && Boolean(errors.projectDisc)
-              }
+              error={Boolean(touched.projectDisc) && Boolean(errors.projectDisc)}
               helperText={touched.projectDisc && errors.projectDisc}
               value={values.projectDisc}
             />
+            
+            {/* Display the project creation error here */}
+            {createError && <Typography color="error">{createError}</Typography>}
+
             <LoadingButton
               sx={{ position: "fixed", bottom: 20, right: 20 }}
               variant="contained"
               endIcon={<ArrowForwardRounded />}
               color="secondary"
               type="submit"
+              loading={isCreating} // Use the correct loading state
             >
               Continue
             </LoadingButton>
@@ -193,52 +158,15 @@ export default function CreateProjectForm({ setPageType }) {
         )}
       </Formik>
       <Box sx={{ width: "40%", px: "2rem" }}>
+        {/* 3. Pass the user search logic and state down to the child component */}
         <InvitePeople
           TeamMembers={TeamMembers}
           setTeamMembers={setTeamMembers}
+          fetchUser={findUserByEmail}
+          isLoading={isSearching}
+          error={searchError}
         />
       </Box>
-      {/* <Box sx={{ width: "40%", px: "2rem" }}>
-        <Box style={{ width: "100%" }}>
-          <Box sx={{ display: "flex", gap: 2, width: "100%" }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Invite Team Members"
-              value={inviteEmail}
-              onChange={handleInviteEmailChange}
-              error={Boolean(errorMsg)}
-            />
-            <LoadingButton
-              variant="outlined"
-              onClick={() => fetchUsers()}
-              loading={isLoading}
-            >
-              <SearchRounded />
-            </LoadingButton>
-          </Box>
-          <Typography color="error">{errorMsg}</Typography>
-          <Divider width="100%">Team Members</Divider>
-        </Box>
-        <Box
-          sx={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            gap: 1,
-          }}
-        >
-          {TeamMembers.map((user) => {
-            return (
-              <TeamMateCard
-                user={user}
-                key={user.email}
-                handleRemoveTeamMate={handleRemoveTeamMate}
-              />
-            );
-          })}
-        </Box>
-      </Box> */}
     </Box>
   );
 }
